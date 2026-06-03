@@ -1,0 +1,119 @@
+generator client {
+  provider   = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// MVP ROLES: DONOR, BENEFICIARY, ORGANIZATION, ADMIN
+model User {
+  id                 String             @id @default(uuid())
+  walletAddress      String?            @unique
+  displayName        String
+  role               String             // DONOR, BENEFICIARY, ORGANIZATION, ADMIN
+  verificationStatus String             @default("PENDING") // PENDING, VERIFIED, REJECTED
+  createdAt          DateTime           @default(now())
+  
+  managedFunds       Fund[]             @relation("FundManager")
+  contributions      Contribution[]
+  supportRequests    SupportRequest[]   @relation("Requester")
+  approvals          Approval[]
+  activityLogs       ActivityLog[]
+}
+
+// FUND CATEGORIES: MENTAL_HEALTH, SCHOOL_LUNCH, SENIOR_CARE, SOLAR_PROJECT
+model Fund {
+  id                 String             @id @default(uuid())
+  name               String
+  category           String             // MENTAL_HEALTH, SCHOOL_LUNCH, SENIOR_CARE, SOLAR_PROJECT
+  description        String
+  targetAmount       Decimal
+  currentBalance     Decimal            @default(0)
+  status             String             @default("PENDING") // PENDING, ACTIVE, COMPLETED, CLOSED
+  rejectionReason    String?
+  
+  organizationId     String
+  organization       User               @relation("FundManager", fields: [organizationId], references: [id])
+  
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  contributions      Contribution[]
+  supportRequests    SupportRequest[]
+  activityLogs       ActivityLog[]
+}
+
+model Contribution {
+  id                String              @id @default(uuid())
+  fundId            String
+  fund              Fund                @relation(fields: [fundId], references: [id])
+  donorId           String?
+  donor             User?               @relation(fields: [donorId], references: [id])
+  supportRequestId  String?
+  supportRequest    SupportRequest?     @relation(fields: [supportRequestId], references: [id])
+  walletAddress     String              // Track contributing wallet even if no User record
+  amount            Decimal
+  asset             String              @default("USDC")
+  txHash            String?             @unique
+  createdAt         DateTime            @default(now())
+}
+
+model SupportRequest {
+  id                String              @id @default(uuid())
+  fundId            String
+  fund              Fund                @relation(fields: [fundId], references: [id])
+  requesterId       String
+  requester         User                @relation("Requester", fields: [requesterId], references: [id])
+  amount            Decimal
+  amountRaised      Decimal             @default(0)
+  donorCount        Int                 @default(0)
+  purpose           String
+  description       String
+  status            String              @default("PENDING") // PENDING, APPROVED, REJECTED, PAID
+  rejectionReason   String?
+  
+  createdAt         DateTime            @default(now())
+  
+  approvals         Approval[]
+  payouts           Payout[]
+  contributions     Contribution[]
+}
+
+model Approval {
+  id                String              @id @default(uuid())
+  requestId         String
+  request           SupportRequest      @relation(fields: [requestId], references: [id])
+  approverId        String
+  approver          User                @relation(fields: [approverId], references: [id])
+  
+  notes             String?
+  createdAt         DateTime            @default(now())
+}
+
+model Payout {
+  id                String              @id @default(uuid())
+  requestId         String              @unique
+  request           SupportRequest      @relation(fields: [requestId], references: [id])
+  amount            Decimal
+  asset             String              @default("USDC")
+  destinationWallet String
+  txHash            String?             @unique
+  
+  createdAt         DateTime            @default(now())
+}
+
+model ActivityLog {
+  id                String              @id @default(uuid())
+  fundId            String?
+  fund              Fund?               @relation(fields: [fundId], references: [id])
+  userId            String?
+  user              User?               @relation(fields: [userId], references: [id])
+  
+  action            String              // e.g., "CONTRIBUTION_RECEIVED", "PAYOUT_APPROVED"
+  details           String              // JSON or string description
+  txHash            String?
+  
+  createdAt         DateTime            @default(now())
+}
